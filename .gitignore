@@ -2,10 +2,10 @@
 .DS_Store
 .AppleDouble
 .LSOverride
+.gitignore
 
 # Node
 node_modules/
-.pnpm-store/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -21,7 +21,6 @@ Deployment/
 
 # Pi
 .pi/plane.json
-.pi/worktrees/
 
 # IDE
 .vscode/
@@ -34,3 +33,13 @@ Deployment/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+/.agents
+/ComfyUI
+/Company-AI-App-Standards
+/Real Estate Management Projects
+/Project-Manager.worktrees
+/SayDo
+/Realestate_Management_Apps
+/Project-Manager
+/Pi-Config
+/.pi.old
