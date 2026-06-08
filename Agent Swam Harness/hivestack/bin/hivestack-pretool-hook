@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Claude Code PreToolUse hook — intercepts Bash and runs `swarm-guard check`.
+
+Wire-up:
+    settings.json → hooks.PreToolUse[].matcher = "Bash"
+                  → hooks.PreToolUse[].hooks[].command = this script
+
+Contract:
+  - stdin:  JSON {"tool_name": "Bash", "tool_input": {"command": "..."}}
+  - exit 0: allow (silent or with stderr warning)
+  - exit 2: block, reason on stderr
+  - non-Bash tools: pass-through (exit 0 immediately)
+
+Severity mapping from swarm-guard check:
+  rc=0 ok    → exit 0, silent
+  rc=1 warn  → exit 0, stderr passthrough (user sees but command runs)
+  rc=2 block → exit 2, JSON deny response on stdout + stderr passthrough
+
+Hard rules:
+  - Failure to run swarm-guard MUST default to allow (fail-open). A broken
+    hook should never wedge the user's session.
+  - Never read the command from anywhere except the parsed JSON.
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+HIVESTACK_INSTALL = Path(os.environ.get(
+    "HIVESTACK_INSTALL",
+    os.path.expanduser("~/.claude/skills/hivestack"),
+))
+GUARD = HIVESTACK_INSTALL / "tools" / "swarm-guard" / "bin" / "swarm-guard"
+
+
+def fail_open(reason: str) -> int:
+    # Visible-but-non-blocking diagnostic. Stays on stderr; rc=0 keeps the
+    # session usable even if hivestack is broken or partially installed.
+    print(f"[hivestack-pretool-hook] fail-open: {reason}", file=sys.stderr)
+    return 0
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        return fail_open(f"invalid hook stdin: {e}")
+    except Exception as e:
+        return fail_open(f"stdin read error: {e}")
+
+    if payload.get("tool_name") != "Bash":
+        return 0
+
+    command = (payload.get("tool_input") or {}).get("command")
+    if not isinstance(command, str) or not command.strip():
+        return 0
+
+    if not GUARD.is_file():
+        return fail_open(f"swarm-guard not installed at {GUARD}")
+    if not os.access(GUARD, os.X_OK):
+        return fail_open(f"swarm-guard not executable: {GUARD}")
+
+    try:
+        proc = subprocess.run(
+            [str(GUARD), "check", command],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        return fail_open("swarm-guard timed out (>5s)")
+    except Exception as e:
+        return fail_open(f"swarm-guard exec error: {e}")
+
+    rc = proc.returncode
+
+    # Surface guard's stderr (the reasons) on our stderr regardless of outcome.
+    if proc.stderr:
+        sys.stderr.write(proc.stderr)
+        if not proc.stderr.endswith("\n"):
+            sys.stderr.write("\n")
+
+    if rc == 0:
+        return 0
+    if rc == 1:
+        # warn: user sees stderr (already printed above), command still runs
+        return 0
+    if rc == 2:
+        # block: emit the structured deny response per Claude Code hook contract
+        response = {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": proc.stderr.strip()
+                                            or "swarm-guard blocked this command",
+            }
+        }
+        sys.stdout.write(json.dumps(response))
+        return 2
+
+    # Unknown rc — fail-open with diagnostic
+    return fail_open(f"swarm-guard unexpected rc={rc}")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

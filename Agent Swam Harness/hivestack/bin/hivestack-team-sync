@@ -46,6 +46,8 @@ mkdir -p "${DEST}"
 # rsync; --delete so removed source files vanish from the vendored copy
 rsync -a --delete \
   --exclude='node_modules/' \
+  --exclude='__pycache__/' \
+  --exclude='*.pyc' \
   --exclude='.DS_Store' \
   --exclude='*.log' \
   --exclude='.git/' \

@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# Per-clone auto-update: when hivestack is vendored under
+# <repo>/.claude/skills/hivestack/ AND the source is reachable via git,
+# silently fast-forward the vendored copy if upstream moved.
+#
+# Throttled to once per hour (lockfile in HIVESTACK_HOME) so a team-mode
+# session doesn't hit `git fetch` on every preamble call.
+#
+# This script is invoked from hivestack-preamble at session start. Failure
+# modes (offline, no upstream, dirty WIP) all fail silently — never wedge
+# a session because the auto-update couldn't run.
+#
+# Exit codes:
+#   0  — no update needed, or update applied
+#   0  — also when ANY failure occurs (intentional fail-silent for preambles)
+#
+# Verbose mode: HIVESTACK_AUTO_UPDATE_VERBOSE=1 prints diagnostics on stderr.
+
+set -uo pipefail
+
+VERBOSE="${HIVESTACK_AUTO_UPDATE_VERBOSE:-0}"
+log() { [ "${VERBOSE}" = "1" ] && echo "auto-update: $*" >&2 || true; }
+
+HOME_DIR="${HIVESTACK_HOME:-${HOME}/.hivestack}"
+STAMP="${HOME_DIR}/.last-auto-update"
+mkdir -p "${HOME_DIR}"
+
+# Throttle: once per hour
+now=$(date +%s)
+last=0
+[ -f "${STAMP}" ] && last=$(cat "${STAMP}" 2>/dev/null || echo 0)
+if [ "$((now - last))" -lt 3600 ]; then
+  log "throttled (last check $((now - last))s ago)"
+  exit 0
+fi
+echo "${now}" > "${STAMP}"
+
+# Find the vendored hivestack under the current git toplevel, if any.
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${repo_root}" ]; then
+  log "not in a git repo; nothing to do"
+  exit 0
+fi
+vendored="${repo_root}/.claude/skills/hivestack"
+if [ ! -d "${vendored}" ]; then
+  log "no vendored hivestack at ${vendored}"
+  exit 0
+fi
+
+# Vendored copies have no .git of their own (they're rsync'd from source).
+# The update flow: locate the source repo of the user's user-global install
+# (~/.claude/skills/hivestack), git pull there, then rsync into the vendored
+# copy IF the vendored MODE file says required and there's no FREEZE.
+src="${HOME}/.claude/skills/hivestack"
+if [ ! -d "${src}/.git" ] && [ ! -L "${src}" ]; then
+  log "no source install at ${src}; can't auto-update"
+  exit 0
+fi
+
+# Honour freeze in the target repo
+if [ -f "${vendored}/FREEZE" ]; then
+  log "FREEZE active in ${vendored}; skipping auto-update"
+  exit 0
+fi
+
+# Honour MODE: only auto-update when mode is "required"
+mode=""
+[ -f "${vendored}/MODE" ] && mode=$(tr -d '\n' < "${vendored}/MODE" 2>/dev/null || true)
+if [ "${mode}" != "required" ]; then
+  log "mode is '${mode:-unset}', not 'required'; skipping auto-update"
+  exit 0
+fi
+
+# Refuse if vendored copy has uncommitted edits (caller's WIP)
+pending="$(cd "${repo_root}" && git status --porcelain -- .claude/skills/hivestack/ 2>/dev/null || true)"
+if [ -n "${pending}" ]; then
+  log "vendored hivestack has WIP; refusing to auto-update"
+  exit 0
+fi
+
+# Resolve real source dir (symlink-safe) and check git status there.
+real_src="$(cd "${src}" 2>/dev/null && pwd -P)"
+if [ -z "${real_src}" ] || [ ! -d "${real_src}/.git" ]; then
+  log "source install is not a git checkout; can't compute drift"
+  exit 0
+fi
+
+# Fetch upstream silently; offline-safe (no error if fetch fails)
+(cd "${real_src}" && git fetch --quiet origin 2>/dev/null) || {
+  log "git fetch failed (offline?); skipping"
+  exit 0
+}
+local_sha=$(cd "${real_src}" && git rev-parse HEAD 2>/dev/null || true)
+remote_sha=$(cd "${real_src}" && git rev-parse origin/HEAD 2>/dev/null || \
+             cd "${real_src}" && git rev-parse origin/main 2>/dev/null || true)
+if [ -z "${local_sha}" ] || [ -z "${remote_sha}" ]; then
+  log "couldn't resolve SHAs"
+  exit 0
+fi
+if [ "${local_sha}" = "${remote_sha}" ]; then
+  log "vendored already at ${local_sha:0:7}; up to date"
+  exit 0
+fi
+
+# Try to fast-forward the source install. If user has local commits there,
+# refuse the auto-update — that's a "human in the loop" situation.
+if ! (cd "${real_src}" && git merge --ff-only "${remote_sha}" >/dev/null 2>&1); then
+  log "source install has diverged from upstream; manual pull needed"
+  exit 0
+fi
+
+# Source is now at remote_sha. Sync into vendored copy.
+sync_bin="${real_src}/bin/hivestack-team-sync"
+if [ ! -x "${sync_bin}" ]; then
+  log "hivestack-team-sync missing; can't propagate"
+  exit 0
+fi
+"${sync_bin}" "${repo_root}" >/dev/null 2>&1 || {
+  log "team-sync failed"
+  exit 0
+}
+
+# Surface a one-line nudge — this is the only stdout the user sees from
+# this script in normal operation.
+echo "hivestack auto-updated to ${remote_sha:0:7} → ${vendored} (run 'git add .claude/skills/hivestack/' and commit)"
+exit 0

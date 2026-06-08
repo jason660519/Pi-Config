@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Roll up ~/.hivestack/analytics/*.jsonl into a daily summary.
+
+Output: ~/.hivestack/analytics/rollup-<YYYY-MM-DD>.json
+
+Counts by skill, by tool, by outcome. Bounded — never reads more than
+`max_lines` (default 200k) per stream to avoid huge files wedging the script.
+
+This is the M4 telemetry pipeline's first stage. /cost-report and /retro
+both consume the rollup file (faster than re-scanning JSONLs each call).
+"""
+from __future__ import annotations
+import argparse, json, os, sys
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+
+HOME = Path(os.environ.get("HIVESTACK_HOME", os.path.expanduser("~/.hivestack")))
+ANALYTICS = HOME / "analytics"
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="hivestack-telemetry-rollup")
+    p.add_argument("--date", help="UTC date YYYY-MM-DD; default: today")
+    p.add_argument("--max-lines", type=int, default=200_000)
+    p.add_argument("--print", action="store_true",
+                   help="also print the JSON to stdout")
+    args = p.parse_args(argv)
+
+    today = args.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    out_path = ANALYTICS / f"rollup-{today}.json"
+
+    skill_by_outcome: dict[str, Counter] = defaultdict(Counter)
+    skill_counts = Counter()
+    tool_counts = Counter()
+    by_repo = Counter()
+    streams = sorted(ANALYTICS.glob("*.jsonl"))
+    total_lines = 0
+
+    for jf in streams:
+        try:
+            lines = jf.read_text().splitlines()
+        except Exception:
+            continue
+        for line in lines[-args.max_lines:]:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ts = d.get("ts", "")
+            if ts and not ts.startswith(today):
+                continue
+            total_lines += 1
+            skill = d.get("skill")
+            tool = d.get("tool")
+            repo = d.get("repo")
+            outcome = d.get("outcome") or ("ok" if d.get("ok") else None)
+            if skill:
+                skill_counts[skill] += 1
+                if outcome:
+                    skill_by_outcome[skill][outcome] += 1
+            if tool:
+                tool_counts[tool] += 1
+            if repo:
+                by_repo[repo] += 1
+
+    summary = {
+        "date": today,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "total_events": total_lines,
+        "skills": dict(skill_counts.most_common()),
+        "tools": dict(tool_counts.most_common()),
+        "by_repo": dict(by_repo.most_common()),
+        "skill_outcomes": {k: dict(v) for k, v in skill_by_outcome.items()},
+        "streams_read": [str(s.name) for s in streams],
+    }
+    ANALYTICS.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(summary, indent=2))
+    if args.print or total_lines == 0:
+        print(json.dumps(summary, indent=2))
+    else:
+        print(f"rollup → {out_path} (events: {total_lines})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

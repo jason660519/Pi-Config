@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Initialise the current git repo for hivestack team mode.
+
+Writes the repo-local .claude/settings.json so every contributor's Claude Code
+session picks up the swarm-guard PreToolUse hook automatically. Idempotent:
+re-running merges, never clobbers other hooks the user may have set.
+
+Usage:
+  hivestack-team-init [required|optional]
+
+  required (default) — hook is installed; intent is that all contributors run
+                       it. (We don't currently enforce; just convention.)
+  optional           — same install, but marker file says "encouraged, not
+                       required" so future tooling can warn instead of block
+                       when a contributor lacks it.
+
+Storage written:
+  <repo>/.claude/settings.json                 (hook registration)
+  <repo>/.claude/skills/hivestack/MODE         (required|optional marker)
+
+What this does NOT do:
+  - install ~/.claude/skills/hivestack (use ./setup for that)
+  - commit anything (caller decides)
+  - touch the user's global ~/.claude/settings.json
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+VERSION = "0.1.0"
+
+HOOK_COMMAND = "${CLAUDE_PROJECT_DIR}/.claude/skills/hivestack/bin/hivestack-pretool-hook"
+# Fallback chain: per-repo install → user-global install. Claude Code expands
+# ${CLAUDE_PROJECT_DIR} at hook invocation time; if the repo-local file is
+# missing, the fail-open path in the hook script itself takes over.
+
+
+def git_toplevel() -> Path | None:
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if out:
+            return Path(out)
+    except Exception:
+        pass
+    return None
+
+
+def merge_hook_into_settings(settings: dict) -> tuple[dict, bool]:
+    """Returns (new_settings, changed)."""
+    hooks = settings.setdefault("hooks", {})
+    pretool = hooks.setdefault("PreToolUse", [])
+
+    # Find an existing Bash matcher we own; merge or append.
+    for entry in pretool:
+        if entry.get("matcher") == "Bash":
+            inner = entry.setdefault("hooks", [])
+            for h in inner:
+                if h.get("command") == HOOK_COMMAND:
+                    return settings, False
+            inner.append({"type": "command", "command": HOOK_COMMAND})
+            return settings, True
+
+    pretool.append({
+        "matcher": "Bash",
+        "hooks": [{"type": "command", "command": HOOK_COMMAND}],
+    })
+    return settings, True
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="hivestack-team-init")
+    p.add_argument("mode", nargs="?", default="required",
+                   choices=["required", "optional"])
+    p.add_argument("--target", help="repo root (default: current git toplevel)")
+    args = p.parse_args(argv)
+
+    if args.target:
+        repo = Path(args.target).resolve()
+        if not (repo / ".git").exists():
+            print(f"error: {repo} is not a git repo", file=sys.stderr)
+            return 2
+    else:
+        repo = git_toplevel()
+        if repo is None:
+            print("error: not inside a git repo (cd to the target repo, or pass --target)",
+                  file=sys.stderr)
+            return 2
+
+    claude_dir = repo / ".claude"
+    claude_dir.mkdir(parents=True, exist_ok=True)
+    settings_path = claude_dir / "settings.json"
+
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text())
+            if not isinstance(settings, dict):
+                print(f"error: {settings_path} is not a JSON object", file=sys.stderr)
+                return 2
+        except json.JSONDecodeError as e:
+            print(f"error: {settings_path} is not valid JSON: {e}", file=sys.stderr)
+            return 2
+    else:
+        settings = {}
+
+    new_settings, changed = merge_hook_into_settings(settings)
+    if changed:
+        settings_path.write_text(json.dumps(new_settings, indent=2) + "\n")
+
+    # MODE marker — written even when settings already had the hook, so the
+    # user can flip required ↔ optional without editing settings.json.
+    skills_dir = claude_dir / "skills" / "hivestack"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    mode_path = skills_dir / "MODE"
+    prior_mode = mode_path.read_text().strip() if mode_path.exists() else None
+    mode_path.write_text(args.mode + "\n")
+    mode_changed = prior_mode != args.mode
+
+    print(json.dumps({
+        "repo": str(repo),
+        "settings_path": str(settings_path),
+        "mode": args.mode,
+        "hook_added": changed,
+        "mode_changed": mode_changed,
+    }, indent=2))
+    print()
+    if changed or mode_changed:
+        print("next steps:")
+        print(f"  cd {repo}")
+        print("  # vendor hivestack itself (if not done yet):")
+        print("  bash ~/.claude/skills/hivestack/bin/hivestack-team-sync \"$(pwd)\"")
+        print("  # then commit:")
+        print("  git add .claude/")
+        print(f"  git commit -m 'chore: install hivestack pretool hook ({args.mode})'")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

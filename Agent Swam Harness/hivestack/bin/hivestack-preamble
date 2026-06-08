@@ -24,6 +24,11 @@ mkdir -p "${HIVESTACK_SESSIONS}" "${HIVESTACK_ANALYTICS}" "${HIVESTACK_LEARNINGS
 UPD=$("${BIN}/hivestack-update-check" 2>/dev/null || true)
 [ -n "${UPD}" ] && echo "${UPD}"
 
+# Per-clone auto-update: fast-forward vendored hivestack when team mode=required.
+# Fully silent in the no-update case; one-line nudge when an update was applied.
+AUTOUPD=$("${BIN}/hivestack-auto-update" 2>/dev/null || true)
+[ -n "${AUTOUPD}" ] && echo "${AUTOUPD}"
+
 touch "${HIVESTACK_SESSIONS}/$$" 2>/dev/null || true
 find "${HIVESTACK_SESSIONS}" -mmin +120 -type f -exec rm -f {} + 2>/dev/null || true
 
@@ -47,13 +52,47 @@ if [ "${TEL}" != "off" ] && [ -n "${SKILL_NAME}" ]; then
     --event "\"skill\":\"${SKILL_NAME}\",\"branch\":\"${BRANCH}\"" 2>/dev/null || true
 fi
 
+# Learnings: prefer brain with a same-skill filter (smart inject). Falls back
+# to the legacy global tail when brain is missing.
+BRAIN="${BIN}/../tools/swarm-brain/bin/swarm-brain"
+SMART_OUT=""
+if [ -x "${BRAIN}" ] && [ -n "${SKILL_NAME}" ]; then
+  # 1) same-skill lessons first (highest signal)
+  SMART_OUT=$("${BRAIN}" query --repo "${SLUG}" --like "${SKILL_NAME}" --limit 2 2>/dev/null || true)
+  # 2) backfill with any severity=error lessons regardless of skill
+  ERR_OUT=$("${BRAIN}" query --repo "${SLUG}" --severity error --limit 2 2>/dev/null || true)
+  # Concatenate, dedupe by id below at render time
+  SMART_OUT="${SMART_OUT}${ERR_OUT:+
+${ERR_OUT}}"
+fi
+
 LF="${HIVESTACK_LEARNINGS}/${SLUG}.jsonl"
 if [ -f "${LF}" ]; then
   CNT=$(wc -l < "${LF}" | tr -d ' ')
   echo "LEARNINGS: ${CNT} total"
-  if [ "${CNT}" -gt 0 ]; then
-    "${BIN}/hivestack-learnings-search" --limit 3 2>/dev/null || true
-  fi
 else
   echo "LEARNINGS: 0"
+fi
+
+if [ -n "${SMART_OUT}" ]; then
+  OUT="${SMART_OUT}" python3 - <<'PY'
+import os, json
+seen = set()
+for line in os.environ.get("OUT", "").splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    if d.get("id") in seen:
+        continue
+    seen.add(d.get("id"))
+    ev = d.get("evidence") or ""
+    ev_part = f"  ({ev})" if ev else ""
+    print(f"  • [{d.get('skill','?')}/{d.get('severity','info')}] {d.get('note','')}{ev_part}")
+PY
+elif [ -f "${LF}" ] && [ "${CNT:-0}" -gt 0 ]; then
+  "${BIN}/hivestack-learnings-search" --limit 3 2>/dev/null || true
 fi

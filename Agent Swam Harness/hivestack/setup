@@ -16,9 +16,11 @@ usage() {
   cat <<EOF
 hivestack setup
 
-  ./setup            install (copy) to ${DEST}
-  ./setup --link     install via symlink (recommended for dev)
-  ./setup --uninstall remove install
+  ./setup                  install (copy) to ${DEST}
+  ./setup --link           install via symlink (recommended for dev)
+  ./setup --team [mode]    install + register PreToolUse hook in the CURRENT
+                           git repo (mode: required|optional, default required)
+  ./setup --uninstall      remove install
 EOF
 }
 
@@ -68,14 +70,19 @@ JSON
 }
 
 mode="copy"
+team_mode=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --link) mode="link" ;;
+    --link) mode="link"; shift ;;
+    --team)
+      shift
+      team_mode="${1:-required}"
+      case "${team_mode}" in required|optional) shift ;; *) team_mode="required" ;; esac
+      ;;
     --uninstall) uninstall; exit 0 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown arg: $1"; usage; exit 1 ;;
   esac
-  shift
 done
 
 case "${mode}" in
@@ -84,6 +91,13 @@ case "${mode}" in
 esac
 
 bootstrap_home
+
+if [ -n "${team_mode}" ]; then
+  echo
+  echo "registering hivestack PreToolUse hook in current repo (${team_mode})..."
+  "${DEST}/bin/hivestack-team-init" "${team_mode}" || \
+    echo "warn: hivestack-team-init failed; user-global install is still ready"
+fi
 
 VERSION="$(cat "${SRC}/VERSION" 2>/dev/null || echo unknown)"
 echo
