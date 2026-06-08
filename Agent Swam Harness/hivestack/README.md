@@ -9,16 +9,33 @@ work across multiple AI coding backends (Claude, Codex, Gemini, local OSS).
 
 ## Status
 
-**v0.1 — M0 + M1 foundations**
+**v0.7 — 23 roles · 8 tools (7 live + 1 auto-detecting) · 19 commands · M4 telemetry**
 
-- 5 core roles wired: `ceo`, `pm`, `eng-manager`, `code-reviewer`, `qa-lead`
-- 5 core commands: `/office-hours`, `/spec`, `/plan-eng-review`, `/review`, `/qa`
-- 1 power tool stub: `swarm-browse`
-- Shared `bin/hivestack-*` helpers
-- Self-install via `./setup`
+- **23 roles** across 6 squads — Executive, Product, Engineering, Quality,
+  Security, Ops. Council compositions for `/plan-*-review`, `/ship`,
+  `/privacy-audit`, `/compliance-check`, `/benchmark`, `/plan-ceo-review`
+  defined in [`roles/_charter.md`](roles/_charter.md).
+- **19 commands wired**:
+  - Discovery: `/office-hours`, `/spec`
+  - Review: `/plan-ceo-review`, `/plan-eng-review`, `/plan-design-review`,
+    `/review`, `/qa`, `/privacy-audit`, `/compliance-check`, `/benchmark`
+  - Learning: `/retro`, `/learn`, `/cost-report`
+  - Ship: `/ship`, `/pair`, `/land-and-deploy`, `/canary`, `/freeze`, `/unfreeze`
+- **8 tools** — status as of v0.7:
+  - **Live**: `swarm-brain` (SQLite), `swarm-guard` (PreToolUse hook live),
+    `swarm-bridge` (driver loader + real dispatch to claude / codex / mock),
+    `swarm-scrape` (stdlib urllib + robots.txt), `swarm-pdf` (md → HTML →
+    PDF via Chrome), `swarm-design` (3 Tailwind variants + gallery),
+    `swarm-bench` (suite loader + runner via swarm-bridge)
+  - **Auto-detecting**: `swarm-browse` (Playwright when installed; stub otherwise)
+- **`./setup --team`** installs hivestack + registers the PreToolUse
+  hook in the current repo. `rm -rf /` is blocked before Bash runs.
+- Cross-session memory persists via SQLite; `/retro` mines it, `/learn`
+  reads it, preamble auto-injects same-skill + severity:error lessons.
+- M4 telemetry: `hivestack-telemetry-rollup` aggregates daily, `/cost-report`
+  rolls the guard ledger by session / day / skill.
 
-The remaining 18 roles, 7 tools, and 25+ commands are scaffolded as milestones in
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what M3 / M4 add.
 
 ## Install
 
@@ -44,17 +61,20 @@ Or from inside this repo:
 /qa <url>                  # QA Lead drives a real browser
 ```
 
+Team-facing usage guide: [`docs/SKILLS_GUIDE.md`](docs/SKILLS_GUIDE.md)
+
 Artifacts land in `~/.hivestack/projects/<repo-slug>/`.
 
 ## Layout
 
 ```
 hivestack/
-├── bin/              # shared CLI helpers (paths, config, telemetry, learnings)
-├── roles/            # 23 specialist persona prompts (5 wired in v0.1)
-├── commands/         # slash commands (5 wired in v0.1)
-├── tools/            # power tools with native code (swarm-browse stub in v0.1)
-└── docs/             # architecture, roadmap, decisions
+├── bin/              # shared CLI helpers (paths, config, telemetry, learnings, hook, sync, …)
+├── roles/            # 23 specialist persona prompts (_charter.md is the contract)
+├── commands/         # 18 slash commands
+├── tools/            # 8 power tools (7 with real backends + 1 stub-with-detection)
+├── agents/           # swarm-bridge driver YAML (claude.yaml, codex.yaml, mock.yaml)
+└── docs/             # ROADMAP, HOOKS, SKILLS_GUIDE
 ```
 
 ## Design philosophy
