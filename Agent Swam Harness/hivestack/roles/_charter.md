@@ -9,31 +9,32 @@ contradicts this charter, the charter wins.
 | Squad | Slug | Title |
 |---|---|---|
 | Executive | `ceo` | Chief Executive |
-| Executive | `coo` | Chief Operating Officer (M2.3) |
-| Executive | `cfo` | Chief Financial Officer (M2.3) |
+| Executive | `coo` | Chief Operating Officer |
+| Executive | `cfo` | Chief Financial Officer |
 | Product | `pm` | Product Manager |
-| Product | `ux-researcher` | UX Researcher (M2.3) |
-| Product | `designer` | Product Designer (M2.3) |
-| Product | `tech-writer` | Documentation Engineer (M2.3) |
+| Product | `ux-researcher` | UX Researcher |
+| Product | `designer` | Product Designer |
+| Product | `tech-writer` | Documentation Engineer |
 | Engineering | `eng-manager` | Engineering Manager |
 | Engineering | `architect` | Principal Architect |
-| Engineering | `backend-eng` | Backend Engineer (M2.3) |
-| Engineering | `frontend-eng` | Frontend Engineer (M2.3) |
+| Engineering | `backend-eng` | Backend Engineer |
+| Engineering | `frontend-eng` | Frontend Engineer |
 | Engineering | `devops` | Platform / DevOps |
-| Engineering | `data-eng` | Data Engineer (M2.3) |
+| Engineering | `data-eng` | Data Engineer |
 | Quality | `qa-lead` | QA Lead |
 | Quality | `code-reviewer` | Senior Code Reviewer |
-| Quality | `perf-eng` | Performance Engineer (M2.3) |
-| Quality | `accessibility-lead` | Accessibility Lead (M2.3) |
+| Quality | `perf-eng` | Performance Engineer |
+| Quality | `accessibility-lead` | Accessibility Lead |
 | Security | `cso` | Chief Security Officer |
-| Security | `privacy-officer` | Privacy Officer (M2.3) |
-| Security | `compliance-officer` | Compliance Officer (M2.3) |
+| Security | `privacy-officer` | Privacy Officer |
+| Security | `compliance-officer` | Compliance Officer |
 | Ops | `release-manager` | Release Manager |
 | Ops | `oncall-sre` | On-call SRE |
 | Ops | `learning-officer` | Chief Learning Officer |
 
-Roles marked **(M2.3)** are reserved; their slugs are stable but `SKILL.md` lands later.
-All other slugs ship in v0.2 (M2.1).
+**All 23 roles shipped.** Implementers (`backend-eng`, `frontend-eng`, `data-eng`)
+do NOT vote — they write code. Advisors (`learning-officer`, `oncall-sre`,
+`ux-researcher`, `tech-writer`) produce artifacts but do not block ship.
 
 ## Boundary rules
 
@@ -59,8 +60,12 @@ All other slugs ship in v0.2 (M2.1).
 
 | Command | Voters | Tie-break |
 |---|---|---|
-| `/plan-ceo-review` | `ceo` (+ `cfo` when M2.3 lands) | `ceo` |
-| `/plan-eng-review` | `eng-manager` + `architect` | escalate to user |
+| `/plan-ceo-review` | `ceo` + `cfo` | `ceo` |
+| `/plan-eng-review` | `eng-manager` + `architect` (+ `data-eng` when events change) | escalate to user |
+| `/plan-design-review` (M2.5b) | `designer` + `accessibility-lead` | escalate to user |
+| `/privacy-audit` (M2.5b) | `privacy-officer` | n/a |
+| `/compliance-check` (M2.5b) | `compliance-officer` | n/a |
+| `/benchmark` (M2.4 + M3 runner) | `perf-eng` | n/a |
 | `/ship` (gate, not vote) | `code-reviewer` + `qa-lead` + `cso` | `release-manager` orchestrates; never overrides |
 
 `/ship` is a **gate**, not a council: all three voters must pass; release-manager
