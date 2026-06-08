@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Thin wrapper around `swarm-guard cost log <usd> <desc>` for use inside SKILL.md.
+# Usage: hivestack-cost-log <usd> "<description>"
+set -euo pipefail
+GUARD="${HOME}/.claude/skills/hivestack/tools/swarm-guard/bin/swarm-guard"
+[ -x "${GUARD}" ] || { echo "swarm-guard not installed; skipping cost log" >&2; exit 0; }
+"${GUARD}" cost log "${1:-0}" "${2:-unlabelled}"

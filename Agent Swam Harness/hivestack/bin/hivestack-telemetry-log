@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Append a JSON event to ~/.hivestack/analytics/<stream>.jsonl
+# No-op when telemetry is off in config.json. Always exits 0.
+set -euo pipefail
+
+HOME_DIR="${HIVESTACK_HOME:-${HOME}/.hivestack}"
+TEL=$("$(dirname "$0")/hivestack-config" get telemetry 2>/dev/null || echo "off")
+[ "${TEL}" = "off" ] || [ -z "${TEL}" ] && exit 0
+
+stream="skill-usage"
+event=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --stream) stream="$2"; shift 2 ;;
+    --event) event="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+mkdir -p "${HOME_DIR}/analytics"
+ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+slug=""
+eval "$("$(dirname "$0")/hivestack-slug" 2>/dev/null || true)"
+
+if [ -z "${event}" ]; then
+  event="{\"ts\":\"${ts}\",\"repo\":\"${SLUG:-unknown}\"}"
+else
+  event="{\"ts\":\"${ts}\",\"repo\":\"${SLUG:-unknown}\",${event}}"
+fi
+
+echo "${event}" >> "${HOME_DIR}/analytics/${stream}.jsonl" 2>/dev/null || true
+exit 0

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "apps": {
+    "project-manager": {
+      "root": "/Volumes/KLEVV-4T-1/Project-Manager",
+      "port": 43187,
+      "openclawScript": "scripts/openclaw.sh"
+    },
+    "saydo": {
+      "root": "/Volumes/KLEVV-4T-1/SayDo",
+      "port": 1420
+    },
+    "realestate-management": {
+      "root": "/Volumes/KLEVV-4T-1/Realestate_Management_Apps",
+      "port": 5173
+    },
+    "company-standards": {
+      "root": "/Volumes/KLEVV-4T-1/Company-AI-App-Standards"
+    }
+  },
+  "openclaw": {
+    "gatewayUrl": "http://127.0.0.1:18790",
+    "workspaceRoot": "/Volumes/KLEVV-4T-1/Project-Manager/.project-manager/openclaw/workspace"
+  }
+}

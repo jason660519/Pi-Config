@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Sync hivestack source → a target repo's .claude/skills/hivestack/ (team mode).
+#
+# Usage:
+#   hivestack-team-sync <target-repo-root>
+#   hivestack-team-sync /tmp/Hivewire
+#
+# Behaviour:
+#   - rsyncs SOURCE → <target>/.claude/skills/hivestack/
+#   - excludes node_modules, .DS_Store, *.log
+#   - prints a diff summary the caller can include in a commit message
+#   - exits 0 even if nothing changed
+#
+# Safety:
+#   - refuses if target is not a git repo
+#   - refuses if target has uncommitted changes inside .claude/skills/hivestack/
+#     (caller must commit or stash first — never overwrite WIP silently)
+set -euo pipefail
+
+TARGET="${1:-}"
+if [ -z "${TARGET}" ]; then
+  echo "usage: hivestack-team-sync <target-repo-root>" >&2
+  exit 1
+fi
+
+if [ ! -d "${TARGET}/.git" ]; then
+  echo "error: ${TARGET} is not a git repo" >&2
+  exit 2
+fi
+
+SRC="$(cd "$(dirname "$0")/.." && pwd)"
+DEST="${TARGET}/.claude/skills/hivestack"
+
+# block if vendored copy has uncommitted edits (caller's WIP)
+if [ -d "${DEST}" ]; then
+  PENDING="$(cd "${TARGET}" && git status --porcelain -- .claude/skills/hivestack/ 2>/dev/null || true)"
+  if [ -n "${PENDING}" ]; then
+    echo "error: vendored hivestack has uncommitted changes — commit or stash first:" >&2
+    echo "${PENDING}" >&2
+    exit 3
+  fi
+fi
+
+mkdir -p "${DEST}"
+
+# rsync; --delete so removed source files vanish from the vendored copy
+rsync -a --delete \
+  --exclude='node_modules/' \
+  --exclude='.DS_Store' \
+  --exclude='*.log' \
+  --exclude='.git/' \
+  "${SRC}/" "${DEST}/"
+
+cd "${TARGET}"
+CHANGED="$(git status --porcelain -- .claude/skills/hivestack/ 2>/dev/null | wc -l | tr -d ' ')"
+SRC_VERSION="$(cat "${SRC}/VERSION" 2>/dev/null || echo unknown)"
+
+echo "synced hivestack ${SRC_VERSION} → ${DEST}"
+echo "files changed: ${CHANGED}"
+if [ "${CHANGED}" -gt 0 ]; then
+  echo
+  echo "next steps:"
+  echo "  cd ${TARGET}"
+  echo "  git add .claude/skills/hivestack/"
+  echo "  git commit -m 'chore: bump vendored hivestack to ${SRC_VERSION}'"
+fi

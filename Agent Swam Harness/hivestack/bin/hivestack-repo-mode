@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Print REPO_MODE=personal|team|unknown.
+# team   = .claude/skills/hivestack exists in repo (vendored or symlinked)
+# personal = no repo-level install, fall back to ~/.claude/skills/hivestack
+set -euo pipefail
+root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${root}" ]; then
+  echo "REPO_MODE=unknown"
+  exit 0
+fi
+if [ -d "${root}/.claude/skills/hivestack" ] || [ -L "${root}/.claude/skills/hivestack" ]; then
+  echo "REPO_MODE=team"
+else
+  echo "REPO_MODE=personal"
+fi

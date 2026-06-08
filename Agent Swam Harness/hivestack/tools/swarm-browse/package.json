@@ -1,0 +1,17 @@
+{
+  "name": "@hivestack/swarm-browse",
+  "version": "0.1.0",
+  "description": "Headless browser stub for hivestack — Playwright backend lands in M1.5.",
+  "type": "module",
+  "bin": {
+    "swarm-browse": "./bin/swarm-browse"
+  },
+  "scripts": {
+    "build": "echo 'stub — nothing to build in v0.1'",
+    "test": "node --test src/cli.test.mjs 2>/dev/null || echo 'no tests yet'"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Append a learning. Prefers swarm-brain (SQLite) when installed; always
+# writes the JSONL fallback so brain can be rebuilt from filesystem.
+#
+# Usage: hivestack-learnings-log --skill <name> --note "<text>" \
+#                                [--severity info|warn|error] [--evidence "<file:line>"]
+set -euo pipefail
+HOME_DIR="${HIVESTACK_HOME:-${HOME}/.hivestack}"
+skill=""; note=""; sev="info"; evidence=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skill) skill="$2"; shift 2 ;;
+    --note) note="$2"; shift 2 ;;
+    --severity) sev="$2"; shift 2 ;;
+    --evidence) evidence="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -z "${skill}" ] || [ -z "${note}" ] && { echo "need --skill and --note" >&2; exit 1; }
+
+eval "$("$(dirname "$0")/hivestack-slug" 2>/dev/null || true)"
+SLUG="${SLUG:-unknown}"
+
+# Always write JSONL (source-of-truth backup, rebuildable input).
+mkdir -p "${HOME_DIR}/learnings"
+ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+note_esc=$(printf '%s' "${note}" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read())[1:-1])')
+ev_esc=$(printf '%s' "${evidence}" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read())[1:-1])')
+echo "{\"ts\":\"${ts}\",\"skill\":\"${skill}\",\"severity\":\"${sev}\",\"note\":\"${note_esc}\",\"evidence\":\"${ev_esc}\"}" \
+  >> "${HOME_DIR}/learnings/${SLUG}.jsonl"
+
+# Try brain if installed. Silent on success; warn (rc=0) on failure.
+BRAIN="${HOME}/.claude/skills/hivestack/tools/swarm-brain/bin/swarm-brain"
+[ -x "${BRAIN}" ] || BRAIN=""
+if [ -n "${BRAIN}" ]; then
+  if [ -n "${evidence}" ]; then
+    "${BRAIN}" enqueue --skill "${skill}" --severity "${sev}" \
+      --note "${note}" --evidence "${evidence}" --repo "${SLUG}" >/dev/null 2>&1 \
+      && echo "logged learning → brain + ${HOME_DIR}/learnings/${SLUG}.jsonl" \
+      || echo "logged learning → ${HOME_DIR}/learnings/${SLUG}.jsonl (brain unavailable)"
+  else
+    "${BRAIN}" enqueue --skill "${skill}" --severity "${sev}" \
+      --note "${note}" --repo "${SLUG}" >/dev/null 2>&1 \
+      && echo "logged learning → brain + ${HOME_DIR}/learnings/${SLUG}.jsonl" \
+      || echo "logged learning → ${HOME_DIR}/learnings/${SLUG}.jsonl (brain unavailable)"
+  fi
+else
+  echo "logged learning → ${HOME_DIR}/learnings/${SLUG}.jsonl"
+fi

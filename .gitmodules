@@ -1,0 +1,3 @@
+[submodule "Agent Swam Harness/hivewire"]
+	path = Agent Swam Harness/hivewire
+	url = https://github.com/jason660519/Hivewire.git

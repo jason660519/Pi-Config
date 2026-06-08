@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Throttled self-update check. Prints a one-line nudge if a new version is on origin.
+# Throttle: once per hour, kept in ${HIVESTACK_HOME}/.last-update-check
+set -euo pipefail
+
+HOME_DIR="${HIVESTACK_HOME:-${HOME}/.hivestack}"
+INSTALL_DIR="${HOME}/.claude/skills/hivestack"
+[ ! -d "${INSTALL_DIR}" ] && exit 0
+STAMP="${HOME_DIR}/.last-update-check"
+mkdir -p "${HOME_DIR}"
+
+now=$(date +%s)
+last=0
+[ -f "${STAMP}" ] && last=$(cat "${STAMP}" 2>/dev/null || echo 0)
+[ "$((now - last))" -lt 3600 ] && exit 0
+echo "${now}" > "${STAMP}"
+
+cd "${INSTALL_DIR}" 2>/dev/null || exit 0
+[ -d .git ] || exit 0
+
+# silent fetch, ignore failure (offline-safe)
+git fetch --quiet origin 2>/dev/null || exit 0
+local_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
+remote_sha=$(git rev-parse origin/HEAD 2>/dev/null || git rev-parse origin/main 2>/dev/null || echo "")
+[ -z "${local_sha}" ] || [ -z "${remote_sha}" ] && exit 0
+[ "${local_sha}" = "${remote_sha}" ] && exit 0
+
+echo "hivestack: update available — run \`cd ${INSTALL_DIR} && git pull && ./setup\`"

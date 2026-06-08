@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Minimal config get/set backed by ~/.hivestack/config.json (jq-free).
+# Usage:
+#   hivestack-config get <key>
+#   hivestack-config set <key> <value>
+set -euo pipefail
+
+CFG="${HIVESTACK_HOME:-${HOME}/.hivestack}/config.json"
+mkdir -p "$(dirname "${CFG}")"
+[ -f "${CFG}" ] || echo '{}' > "${CFG}"
+
+cmd="${1:-}"
+key="${2:-}"
+val="${3:-}"
+
+# Heredoc tags are single-quoted so the shell does NOT expand $variables inside;
+# inputs flow in via env vars, which python reads from os.environ. This blocks
+# the previous shell→python injection vector where a quote or backslash in
+# `val` / `key` could break out of the python literal.
+
+get() {
+  CFG_PATH="${CFG}" CFG_KEY="${key}" python3 - <<'PY' 2>/dev/null || true
+import json, os, sys
+try:
+    with open(os.environ["CFG_PATH"]) as f:
+        d = json.load(f)
+    v = d.get(os.environ["CFG_KEY"])
+    if v is None: sys.exit(0)
+    if isinstance(v, bool):
+        print("true" if v else "false")
+    else:
+        print(v)
+except Exception:
+    sys.exit(0)
+PY
+}
+
+set_val() {
+  CFG_PATH="${CFG}" CFG_KEY="${key}" CFG_VAL="${val}" python3 - <<'PY'
+import json, os
+with open(os.environ["CFG_PATH"]) as f:
+    d = json.load(f)
+v = os.environ["CFG_VAL"]
+if v.lower() in ("true", "false"):
+    v = v.lower() == "true"
+elif v.isdigit():
+    v = int(v)
+d[os.environ["CFG_KEY"]] = v
+with open(os.environ["CFG_PATH"], "w") as f:
+    json.dump(d, f, indent=2)
+print(f"set {os.environ['CFG_KEY']} = {v}")
+PY
+}
+
+case "${cmd}" in
+  get) get ;;
+  set) set_val ;;
+  *) echo "usage: hivestack-config get|set <key> [value]"; exit 1 ;;
+esac

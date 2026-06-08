@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# hivestack installer — links or copies this checkout into ~/.claude/skills/hivestack
+# and writes a default ~/.hivestack/config.json.
+#
+# Usage:
+#   ./setup              # copy this dir to ~/.claude/skills/hivestack
+#   ./setup --link       # symlink instead (good for development)
+#   ./setup --uninstall  # remove the install
+set -euo pipefail
+
+SRC="$(cd "$(dirname "$0")" && pwd)"
+DEST="${HOME}/.claude/skills/hivestack"
+HOME_DIR="${HOME}/.hivestack"
+
+usage() {
+  cat <<EOF
+hivestack setup
+
+  ./setup            install (copy) to ${DEST}
+  ./setup --link     install via symlink (recommended for dev)
+  ./setup --uninstall remove install
+EOF
+}
+
+uninstall() {
+  if [ -L "${DEST}" ]; then
+    rm "${DEST}"
+    echo "removed symlink ${DEST}"
+  elif [ -d "${DEST}" ]; then
+    rm -rf "${DEST}"
+    echo "removed ${DEST}"
+  else
+    echo "nothing to remove at ${DEST}"
+  fi
+}
+
+install_link() {
+  mkdir -p "$(dirname "${DEST}")"
+  if [ -e "${DEST}" ] || [ -L "${DEST}" ]; then
+    rm -rf "${DEST}"
+  fi
+  ln -s "${SRC}" "${DEST}"
+  echo "symlinked ${DEST} -> ${SRC}"
+}
+
+install_copy() {
+  mkdir -p "$(dirname "${DEST}")"
+  if [ -e "${DEST}" ] || [ -L "${DEST}" ]; then
+    rm -rf "${DEST}"
+  fi
+  cp -R "${SRC}" "${DEST}"
+  echo "copied ${SRC} -> ${DEST}"
+}
+
+bootstrap_home() {
+  mkdir -p "${HOME_DIR}"/{sessions,analytics,learnings,projects,bench}
+  if [ ! -f "${HOME_DIR}/config.json" ]; then
+    cat > "${HOME_DIR}/config.json" <<JSON
+{
+  "telemetry": "off",
+  "retention_days": 90,
+  "proactive": true,
+  "skill_prefix": false
+}
+JSON
+    echo "wrote ${HOME_DIR}/config.json (telemetry=off by default)"
+  fi
+}
+
+mode="copy"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --link) mode="link" ;;
+    --uninstall) uninstall; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown arg: $1"; usage; exit 1 ;;
+  esac
+  shift
+done
+
+case "${mode}" in
+  link) install_link ;;
+  copy) install_copy ;;
+esac
+
+bootstrap_home
+
+VERSION="$(cat "${SRC}/VERSION" 2>/dev/null || echo unknown)"
+echo
+echo "hivestack ${VERSION} installed."
+echo "Try in Claude Code:"
+echo "    /office-hours        — brainstorm an idea"
+echo "    /spec <feature>      — PM writes a PRD"
+echo "    /review              — review the current diff"
+echo "    /qa <url>            — QA Lead drives a browser"

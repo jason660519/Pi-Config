@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Resolve hivestack paths. Prints KEY=VALUE lines suitable for `eval`.
+set -euo pipefail
+
+HOME_DIR="${HIVESTACK_HOME:-${HOME}/.hivestack}"
+INSTALL_DIR="${HOME}/.claude/skills/hivestack"
+[ ! -d "${INSTALL_DIR}" ] && INSTALL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+cat <<EOF
+HIVESTACK_HOME=${HOME_DIR}
+HIVESTACK_INSTALL=${INSTALL_DIR}
+HIVESTACK_SESSIONS=${HOME_DIR}/sessions
+HIVESTACK_ANALYTICS=${HOME_DIR}/analytics
+HIVESTACK_LEARNINGS=${HOME_DIR}/learnings
+HIVESTACK_PROJECTS=${HOME_DIR}/projects
+HIVESTACK_BENCH=${HOME_DIR}/bench
+EOF

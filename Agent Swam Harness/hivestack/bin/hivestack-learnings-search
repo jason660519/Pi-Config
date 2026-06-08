@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Render the last N learnings for the current repo. Default N=5.
+# Prefers brain (richer queries, dedup); falls back to JSONL tail if brain
+# is missing or errors.
+set -euo pipefail
+HOME_DIR="${HIVESTACK_HOME:-${HOME}/.hivestack}"
+limit="${1:-5}"
+case "${limit}" in --limit) limit="${2:-5}" ;; esac
+
+eval "$("$(dirname "$0")/hivestack-slug" 2>/dev/null || true)"
+SLUG="${SLUG:-unknown}"
+
+BRAIN="${HOME}/.claude/skills/hivestack/tools/swarm-brain/bin/swarm-brain"
+[ -x "${BRAIN}" ] || BRAIN=""
+
+if [ -n "${BRAIN}" ]; then
+  out=$("${BRAIN}" query --repo "${SLUG}" --limit "${limit}" 2>/dev/null || true)
+  if [ -n "${out}" ]; then
+    # heredoc and pipe both claim stdin; pass the payload via env to avoid
+    # the heredoc winning the race and python reading its own source.
+    OUT="${out}" python3 - <<'PY'
+import os, json
+for line in os.environ.get("OUT", "").splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+        ev = d.get("evidence") or ""
+        ev_part = f"  ({ev})" if ev else ""
+        print(f"  • [{d.get('skill','?')}/{d.get('severity','info')}] {d.get('note','')}{ev_part}")
+    except Exception:
+        pass
+PY
+    exit 0
+  fi
+fi
+
+# Fallback: JSONL tail (legacy path).
+FILE="${HOME_DIR}/learnings/${SLUG}.jsonl"
+[ -f "${FILE}" ] || exit 0
+LIMIT="${limit}" FILE="${FILE}" python3 - <<'PY'
+import os, json
+limit = int(os.environ.get("LIMIT", "5"))
+path = os.environ.get("FILE", "")
+try:
+    with open(path, "r") as f:
+        lines = f.readlines()[-limit:]
+except FileNotFoundError:
+    raise SystemExit(0)
+for line in lines:
+    try:
+        d = json.loads(line)
+        ev = d.get("evidence") or ""
+        ev_part = f"  ({ev})" if ev else ""
+        print(f"  • [{d.get('skill','?')}/{d.get('severity','info')}] {d.get('note','')}{ev_part}")
+    except Exception:
+        pass
+PY

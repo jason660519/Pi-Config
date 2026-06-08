@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Print SLUG=<repo-basename> for the current git repo, or SLUG=unknown.
+set -euo pipefail
+root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${root}" ]; then
+  echo "SLUG=unknown"
+  exit 0
+fi
+slug="$(basename "${root}" | tr -cd 'a-zA-Z0-9._-')"
+echo "SLUG=${slug:-unknown}"

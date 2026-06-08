@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Shared preamble — every SKILL.md sources this to set up session context.
+# Prints KEY: VALUE lines for the model to read, plus side-effects:
+#   - touches sessions/<pid>, prunes >2h-old session files
+#   - logs skill_run to telemetry (if opted-in)
+#   - loads up to 3 recent learnings for the current repo
+#
+# Usage from SKILL.md preamble:
+#   source <(~/.claude/skills/hivestack/bin/hivestack-preamble --skill <name>)
+set -euo pipefail
+
+SKILL_NAME=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skill) SKILL_NAME="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+BIN="$(cd "$(dirname "$0")" && pwd)"
+eval "$("${BIN}/hivestack-paths")"
+mkdir -p "${HIVESTACK_SESSIONS}" "${HIVESTACK_ANALYTICS}" "${HIVESTACK_LEARNINGS}"
+
+UPD=$("${BIN}/hivestack-update-check" 2>/dev/null || true)
+[ -n "${UPD}" ] && echo "${UPD}"
+
+touch "${HIVESTACK_SESSIONS}/$$" 2>/dev/null || true
+find "${HIVESTACK_SESSIONS}" -mmin +120 -type f -exec rm -f {} + 2>/dev/null || true
+
+BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+REPO_MODE=$("${BIN}/hivestack-repo-mode" 2>/dev/null | cut -d= -f2)
+SESSION_KIND=$("${BIN}/hivestack-session-kind" 2>/dev/null || echo "interactive")
+eval "$("${BIN}/hivestack-slug" 2>/dev/null || true)"
+SLUG="${SLUG:-unknown}"
+
+echo "SKILL: ${SKILL_NAME}"
+echo "BRANCH: ${BRANCH}"
+echo "REPO: ${SLUG}"
+echo "REPO_MODE: ${REPO_MODE}"
+echo "SESSION_KIND: ${SESSION_KIND}"
+
+TEL=$("${BIN}/hivestack-config" get telemetry 2>/dev/null || echo "off")
+echo "TELEMETRY: ${TEL:-off}"
+
+if [ "${TEL}" != "off" ] && [ -n "${SKILL_NAME}" ]; then
+  "${BIN}/hivestack-telemetry-log" --stream skill-usage \
+    --event "\"skill\":\"${SKILL_NAME}\",\"branch\":\"${BRANCH}\"" 2>/dev/null || true
+fi
+
+LF="${HIVESTACK_LEARNINGS}/${SLUG}.jsonl"
+if [ -f "${LF}" ]; then
+  CNT=$(wc -l < "${LF}" | tr -d ' ')
+  echo "LEARNINGS: ${CNT} total"
+  if [ "${CNT}" -gt 0 ]; then
+    "${BIN}/hivestack-learnings-search" --limit 3 2>/dev/null || true
+  fi
+else
+  echo "LEARNINGS: 0"
+fi

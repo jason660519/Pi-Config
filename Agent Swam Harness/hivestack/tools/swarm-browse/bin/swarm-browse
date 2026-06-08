@@ -1,0 +1,8 @@
+#!/usr/bin/env node
+// Thin entrypoint. Real logic in ../src/cli.mjs.
+// Kept as plain Node to avoid forcing Bun on stub installs.
+import { run } from '../src/cli.mjs';
+run(process.argv.slice(2)).then(
+  (code) => process.exit(code ?? 0),
+  (err) => { console.error('swarm-browse:', err?.message ?? err); process.exit(1); }
+);

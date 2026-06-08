@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Classify the Claude Code session: interactive | spawned | headless
+# Heuristic: TTY on stdin → interactive; CLAUDE_AGENT_SPAWNED env → spawned; else headless.
+set -euo pipefail
+if [ -n "${CLAUDE_AGENT_SPAWNED:-}" ]; then
+  echo "spawned"
+elif [ -t 0 ]; then
+  echo "interactive"
+else
+  echo "headless"
+fi
