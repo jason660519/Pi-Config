@@ -50,6 +50,27 @@ source <(~/.claude/skills/hivestack/bin/hivestack-preamble --skill ship 2>/dev/n
 2. **Refuse early** if any of these are true:
    - Current branch == base branch (nothing to ship).
    - There are uncommitted changes (`git status --porcelain` non-empty).
+   - **Freeze active** AND PR lacks the allow-label:
+     ```bash
+     REPO_ROOT="$(git rev-parse --show-toplevel)"
+     FREEZE="${REPO_ROOT}/.claude/skills/hivestack/FREEZE"
+     if [ -f "${FREEZE}" ]; then
+       # parse expires field; if not expired AND PR lacks allow_label → refuse
+       python3 - <<'PY'
+     import json, os, sys
+     from datetime import datetime, timezone
+     with open(os.environ["FREEZE"]) as f:
+         d = json.load(f)
+     exp = datetime.strptime(d["expires"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+     if datetime.now(timezone.utc) < exp:
+         # active — caller decides label check via gh pr view
+         print(f"FREEZE ACTIVE: {d['reason']} (set by {d.get('set_by','?')}, expires {d['expires']})")
+         sys.exit(1)
+     PY
+     fi
+     ```
+     If freeze is active, check the PR's labels via `gh pr view --json labels`
+     for the `allow_label` from FREEZE (default `hotfix`); proceed only if present.
 3. **Collect the three voter artifacts** — most recent for the current
    branch / commit:
    ```bash

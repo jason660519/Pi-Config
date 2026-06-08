@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Roll up ~/.hivestack/guard/cost-ledger.jsonl into a per-session, per-
+description, and per-day report. Consumed by the /cost-report command.
+
+Usage:
+  hivestack-cost-report [--since <YYYY-MM-DD>] [--by session|day|skill]
+"""
+from __future__ import annotations
+import argparse, json, os, sys
+from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+
+HOME = Path(os.environ.get("HIVESTACK_HOME", os.path.expanduser("~/.hivestack")))
+LEDGER = HOME / "guard" / "cost-ledger.jsonl"
+BUDGET = HOME / "guard" / "budget.json"
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="hivestack-cost-report")
+    p.add_argument("--since", help="UTC date floor, YYYY-MM-DD")
+    p.add_argument("--by", choices=["session", "day", "skill", "all"], default="all")
+    args = p.parse_args(argv)
+
+    if not LEDGER.is_file():
+        print(json.dumps({"total_usd": 0, "entries": 0, "ledger": str(LEDGER),
+                          "note": "no cost-ledger yet — call swarm-guard cost log"},
+                         indent=2))
+        return 0
+
+    rows: list[dict] = []
+    for line in LEDGER.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if args.since and (row.get("ts") or "") < args.since:
+            continue
+        rows.append(row)
+
+    total = sum(float(r.get("usd", 0)) for r in rows)
+    by_session = defaultdict(float)
+    by_day = defaultdict(float)
+    by_skill = defaultdict(float)
+    for r in rows:
+        by_session[r.get("session_id", "?")] += float(r.get("usd", 0))
+        ts = r.get("ts", "")
+        if ts:
+            by_day[ts[:10]] += float(r.get("usd", 0))
+        desc = r.get("description", "")
+        # Convention: descriptions starting with "<skill>:" attribute to that skill
+        if ":" in desc:
+            skill = desc.split(":", 1)[0].strip()
+            by_skill[skill] += float(r.get("usd", 0))
+
+    budget_data = None
+    if BUDGET.is_file():
+        try:
+            budget_data = json.loads(BUDGET.read_text())
+        except Exception:
+            pass
+
+    out = {
+        "total_usd": round(total, 4),
+        "entries": len(rows),
+        "since": args.since,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "current_budget": budget_data,
+    }
+    if args.by in {"session", "all"}:
+        out["by_session"] = {k: round(v, 4) for k, v in sorted(by_session.items(),
+                                                               key=lambda x: -x[1])}
+    if args.by in {"day", "all"}:
+        out["by_day"] = {k: round(v, 4) for k, v in sorted(by_day.items())}
+    if args.by in {"skill", "all"}:
+        out["by_skill"] = {k: round(v, 4) for k, v in sorted(by_skill.items(),
+                                                             key=lambda x: -x[1])}
+    print(json.dumps(out, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
