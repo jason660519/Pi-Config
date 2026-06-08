@@ -1,8 +1,8 @@
 ---
 name: swarm-browse
 kind: tool
-version: 0.1.0
-description: Headless browser for QA, dogfooding, and screenshot capture. (hivestack)
+version: 0.2.0
+description: Headless browser; Playwright when installed, stub otherwise (auto-detected).
 allowed-tools:
   - Bash
   - Read
@@ -17,9 +17,16 @@ preferred-backends:
 
 ## Status
 
-**v0.1 stub.** Prints planned actions to stdout. Real Playwright/CDP backend lands in
-M1.5. Stub mode lets `/qa` and `/design-review` rehearse their flows end-to-end without
-the heavy browser dependency.
+**v0.2 — Playwright-aware.** On startup the CLI runs `require.resolve('playwright')`:
+
+- If Playwright is installed (`npm i playwright && npx playwright install chromium`),
+  real navigation, waits, and (per-call stateless) page interaction are wired.
+- If not, falls back to v0.1 stub behaviour so `/qa` and `/plan-design-review` still
+  rehearse their flows end-to-end. `swarm-browse version` prints the active mode.
+
+Stateful operations that need a persistent page (sequential `open` → `click` →
+`screenshot` across separate CLI invocations) await the M3 daemon. Today, run the
+sequence inside one Node script that imports the same module.
 
 ## Commands (planned API)
 
@@ -51,7 +58,9 @@ Screenshots and HARs land under:
 
 ## Roadmap
 
-- M1.5 — Playwright backend, single-tab CDP, screenshot diff
-- M2 — sidecar prompt-injection classifier (port from gstack `browse/`)
-- M2 — cookie import for authenticated dogfooding
-- M3 — multi-tab and parallel sessions
+- M2.5 (this) — Playwright detection + stateless `open` / `wait` / `close` live
+- M3 — long-running daemon for stateful sequences across CLI invocations
+- M3 — screenshot diff via perceptual hash
+- M3 — sidecar prompt-injection classifier (port from gstack `browse/`)
+- M3 — cookie import for authenticated dogfooding
+- M4 — multi-tab + parallel sessions

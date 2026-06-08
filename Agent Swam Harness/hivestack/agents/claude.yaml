@@ -1,0 +1,24 @@
+name: claude
+kind: cli
+# Resolves to whichever `claude` is on PATH. The Claude Code CLI accepts
+# `--print "<prompt>"` for headless one-shot runs.
+binary: claude
+args:
+  - "--print"
+env: {}
+capabilities:
+  - code_edit
+  - shell
+  - browse: true
+context_window: 1000000
+# Pricing as of 2026-06 for Opus 4.7 (1M context). USD per million tokens.
+cost_per_mtok_in: 15.0
+cost_per_mtok_out: 75.0
+role_affinity:
+  - ceo
+  - eng-manager
+  - architect
+  - code-reviewer
+  - qa-lead
+  - cso
+  - designer

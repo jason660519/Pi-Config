@@ -1,0 +1,18 @@
+name: codex
+kind: cli
+binary: codex
+args:
+  - "--mode"
+  - "headless"
+env:
+  OPENAI_API_KEY: "${OPENAI_API_KEY}"
+capabilities:
+  - code_edit
+  - shell
+context_window: 200000
+cost_per_mtok_in: 5.0
+cost_per_mtok_out: 15.0
+role_affinity:
+  - backend-eng
+  - frontend-eng
+  - data-eng

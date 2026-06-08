@@ -1,0 +1,14 @@
+name: mock
+kind: mock
+# Mock driver — returns a canned response. Used by tests and as the
+# fallback driver when no real backend is configured.
+binary: ""
+args: []
+env: {}
+capabilities:
+  - code_edit
+  - shell
+context_window: 1000
+cost_per_mtok_in: 0.0
+cost_per_mtok_out: 0.0
+role_affinity: []
